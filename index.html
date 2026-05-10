@@ -60,6 +60,22 @@
     display:none; background:none; border:none; padding:4px 6px; line-height:1;
   }
   .result-count { font-size:10px; color:rgba(168,196,188,0.45); text-align:right; margin-top:5px; }
+  .year-scroll {
+    display:flex; gap:6px; overflow-x:auto; padding:8px 0 2px;
+    scrollbar-width:none; -ms-overflow-style:none;
+  }
+  .year-scroll::-webkit-scrollbar { display:none; }
+  .year-pill {
+    flex-shrink:0; padding:5px 13px; border-radius:20px;
+    font-size:11px; font-family:'Inconsolata',monospace; letter-spacing:.04em;
+    border:1px solid rgba(168,196,188,0.25); color:rgba(168,196,188,0.6);
+    background:rgba(255,255,255,0.06); cursor:pointer; white-space:nowrap;
+    transition:all .15s;
+  }
+  .year-pill.active {
+    background:var(--green-light); border-color:var(--green-light);
+    color:#fff; font-weight:600;
+  }
 
   /* ── VIEWS ── */
   .view { display:none; padding:12px 12px 90px; }
@@ -83,6 +99,14 @@
     font-size:10px; font-weight:600; letter-spacing:.04em;
     padding:3px 9px; border-radius:20px; border:1px solid transparent;
     max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .card-footer {
+    display:flex; align-items:flex-end; justify-content:space-between;
+    margin-top:6px; gap:8px;
+  }
+  .card-shop {
+    font-size:10px; color:var(--muted); white-space:nowrap;
+    flex-shrink:0; font-style:italic;
   }
 
   /* ── STOCK CARDS ── */
@@ -408,6 +432,7 @@ self.addEventListener('fetch', e => {
       oninput="onSearch()" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
     <button class="search-clear" id="clear-btn" onclick="clearSearch()">×</button>
   </div>
+  <div class="year-scroll" id="year-pills"></div>
   <div class="result-count" id="count"></div>
 </div>
 
@@ -676,6 +701,7 @@ function switchTab(name) {
     document.getElementById('nav-'+t).classList.toggle('active', t===name);
   });
   document.getElementById('search-bar').style.display = name==='archive' ? 'block' : 'none';
+  if (name==='archive') buildYearPills();
   if (name==='stock') renderStock();
   if (name==='films') {
     renderFilms();
@@ -695,6 +721,24 @@ function switchTab(name) {
 const PER_PAGE = 25;
 let filtered = [], page = 1;
 
+function buildYearPills() {
+  const years = [...new Set(archive.map(r => r.year).filter(Boolean))].sort((a,b) => b-a);
+  const container = document.getElementById('year-pills');
+  if (!container) return;
+  container.innerHTML = ['All', ...years].map(y => {
+    const isAll = y === 'All';
+    const active = isAll ? !activeYear : String(activeYear) === String(y);
+    return `<div class="year-pill${active?' active':''}" onclick="filterByYear(${isAll ? 'null' : `'${y}'`})">${y}</div>`;
+  }).join('');
+}
+
+function filterByYear(year) {
+  activeYear = year;
+  buildYearPills();
+  page = 1;
+  onSearch();
+}
+
 function onSearch() {
   // Clear film filter if user types manually
   if (activeFilmFilter) {
@@ -708,7 +752,8 @@ function onSearch() {
   filtered = (q
     ? archive.filter(r => [r.brand,r.film,r.camera,r.notes,r.destination,r.shop,r.period].join(' ').toLowerCase().includes(q))
     : [...archive]
-  ).sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
+  ).filter(r => !activeYear || String(r.year) === String(activeYear))
+   .sort((a,b) => (b.date||'') > (a.date||'') ? 1 : -1);
   renderArchive();
 }
 
@@ -749,7 +794,10 @@ function renderArchive() {
         </div>
         ${r.notes  ? `<div class="card-notes">📍 ${esc(r.notes)}</div>` : ''}
         ${r.camera ? `<div class="card-camera">📷 ${esc(r.camera)}</div>` : ''}
-        ${dest     ? `<div class="card-dest" style="${destStyle(dest)}">🗂 ${esc(dest)}</div>` : ''}
+        <div class="card-footer">
+          <div>${dest ? `<div class="card-dest" style="${destStyle(dest)}">🗂 ${esc(dest)}</div>` : ''}</div>
+          ${r.shop ? `<div class="card-shop">✂ ${esc(r.shop)}</div>` : ''}
+        </div>
       </div>`;
     }).join('');
   }
@@ -771,6 +819,7 @@ function nextPage() { page++; renderArchive(); }
 
 // ── FILMS BROWSER ────────────────────────────────────────────────
 let activeFilmFilter = null; // {brand, film, brandKey} or null
+let activeYear = null;
 let _previousTab = 'films'; // tab to return to when clearing film filter
 let _openBrandLabel = null; // which brand is currently expanded in Films tab
 // Registry to avoid passing brand/film strings through onclick attrs
@@ -1358,6 +1407,7 @@ function importXLSX(event) {
 
 // ── INIT ──────────────────────────────────────────────────────────
 loadSyncTimes();
+buildYearPills();
 onSearch();
 // ── STOCK EXCEL EXPORT / IMPORT ──────────────────────────────────
 function exportStockXLSX() {
